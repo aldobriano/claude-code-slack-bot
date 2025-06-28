@@ -235,7 +235,7 @@ export class SlackHandler {
       statusMessageTs = statusResult.ts;
 
       // Add thinking reaction to original message (but don't spam if already set)
-      await this.updateMessageReaction(sessionKey, '🤔');
+      await this.updateMessageReaction(sessionKey, 'thinking_face');
       
       // Create Slack context for permission prompts
       const slackContext = {
@@ -268,7 +268,7 @@ export class SlackHandler {
             }
 
             // Update reaction to show working
-            await this.updateMessageReaction(sessionKey, '⚙️');
+            await this.updateMessageReaction(sessionKey, 'gear');
 
             // Check for TodoWrite tool and handle it specially
             const todoTool = message.message.content?.find((part: any) => 
@@ -332,7 +332,7 @@ export class SlackHandler {
       }
 
       // Update reaction to show completion
-      await this.updateMessageReaction(sessionKey, '✅');
+      await this.updateMessageReaction(sessionKey, 'white_check_mark');
 
       this.logger.info('Completed processing message', {
         sessionKey,
@@ -357,7 +357,7 @@ export class SlackHandler {
         }
 
         // Update reaction to show error
-        await this.updateMessageReaction(sessionKey, '❌');
+        await this.updateMessageReaction(sessionKey, 'x');
         
         await say({
           text: `Error: ${error.message || 'Something went wrong'}`,
@@ -633,11 +633,11 @@ export class SlackHandler {
 
     let emoji: string;
     if (completed === total) {
-      emoji = '✅'; // All tasks completed
+      emoji = 'white_check_mark'; // All tasks completed
     } else if (inProgress > 0) {
-      emoji = '🔄'; // Tasks in progress
+      emoji = 'arrows_counterclockwise'; // Tasks in progress
     } else {
-      emoji = '📋'; // Tasks pending
+      emoji = 'clipboard'; // Tasks pending
     }
 
     await this.updateMessageReaction(sessionKey, emoji);
