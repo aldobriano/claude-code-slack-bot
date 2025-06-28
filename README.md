@@ -15,7 +15,7 @@ A Slack bot that integrates with Claude Code SDK to provide AI-powered coding as
 
 - Node.js 18+ installed
 - A Slack workspace where you can install apps
-- Claude Code
+- Claude Code CLI authenticated (`claude auth`)
 
 ## Setup
 
@@ -27,7 +27,17 @@ cd claude-code-slack
 npm install
 ```
 
-### 2. Create Slack App
+### 2. Authenticate Claude CLI
+
+The bot uses Claude CLI authentication. Make sure you're authenticated before running the bot:
+
+```bash
+claude auth
+```
+
+Follow the prompts to authenticate with your Claude account.
+
+### 3. Create Slack App
 
 #### Option A: Using App Manifest (Recommended)
 1. Go to [api.slack.com/apps](https://api.slack.com/apps) and click "Create New App"
@@ -41,7 +51,7 @@ npm install
 2. Choose "From scratch" and give your app a name
 3. Select the workspace where you want to install it
 
-### 3. Configure Slack App
+### 4. Configure Slack App
 
 After creating the app (either method), you need to:
 
@@ -56,7 +66,7 @@ After creating the app (either method), you need to:
 1. Go to "Basic Information"
 2. Copy the "Signing Secret"
 
-### 4. Configure Environment
+### 5. Configure Environment
 
 Copy `.env.example` to `.env` and fill in your credentials:
 
@@ -72,14 +82,15 @@ SLACK_APP_TOKEN=xapp-your-app-token
 SLACK_SIGNING_SECRET=your-signing-secret
 
 # Claude Code Configuration
-# This is only needed if you don't use a Claude subscription
+# The bot now uses Claude CLI authentication instead of API key
+# Make sure to run 'claude auth' before starting the bot
 
-# ANTHROPIC_API_KEY=your-anthropic-api-key
+# Optional: Use third-party providers
 # CLAUDE_CODE_USE_BEDROCK=1
 # CLAUDE_CODE_USE_VERTEX=1
 ```
 
-### 5. Run the Bot
+### 6. Run the Bot
 
 ```bash
 # Development mode (with auto-reload)
@@ -281,7 +292,7 @@ src/
 4. Check Slack app permissions are configured correctly
 
 ### Authentication errors
-1. Verify your Anthropic API key is valid
+1. Verify Claude CLI is authenticated (run `claude auth`)
 2. Check Slack tokens haven't expired
 3. Ensure Socket Mode is enabled
 

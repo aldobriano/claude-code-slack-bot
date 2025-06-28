@@ -8,9 +8,6 @@ export const config = {
     appToken: process.env.SLACK_APP_TOKEN!,
     signingSecret: process.env.SLACK_SIGNING_SECRET!,
   },
-  anthropic: {
-    apiKey: process.env.ANTHROPIC_API_KEY!,
-  },
   claude: {
     useBedrock: process.env.CLAUDE_CODE_USE_BEDROCK === '1',
     useVertex: process.env.CLAUDE_CODE_USE_VERTEX === '1',
