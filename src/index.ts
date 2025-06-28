@@ -4,13 +4,35 @@ import { ClaudeHandler } from './claude-handler';
 import { SlackHandler } from './slack-handler';
 import { McpManager } from './mcp-manager';
 import { Logger } from './logger';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
 
 const logger = new Logger('Main');
+
+async function checkClaudeAuth(): Promise<boolean> {
+  try {
+    const { stdout } = await execAsync('claude auth status');
+    return stdout.includes('Authenticated');
+  } catch (error) {
+    logger.error('Failed to check Claude authentication status', error);
+    return false;
+  }
+}
 
 async function start() {
   try {
     // Validate configuration
     validateConfig();
+
+    // Check Claude CLI authentication
+    const isAuthenticated = await checkClaudeAuth();
+    if (!isAuthenticated) {
+      logger.error('Claude CLI is not authenticated. Please run "claude auth" to authenticate.');
+      process.exit(1);
+    }
+    logger.info('Claude CLI authentication verified');
 
     logger.info('Starting Claude Slack bot', {
       debug: config.debug,

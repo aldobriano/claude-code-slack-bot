@@ -30,7 +30,7 @@ Currently, no test framework or linting is configured. When implementing tests o
 1. **Slack Events** → `slack-handler.ts` receives and processes messages
 2. **Session Management** → `claude-handler.ts` maintains per-conversation Claude Code sessions
 3. **Working Directory** → `working-directory-manager.ts` resolves project paths
-4. **Tool Execution** → Claude Code SDK executes tools with proper context
+4. **Tool Execution** → Claude CLI executes tools with proper context (no longer uses SDK)
 5. **Response Streaming** → Real-time updates sent back to Slack
 
 ### Session Architecture
@@ -88,6 +88,13 @@ Currently, no test framework or linting is configured. When implementing tests o
 - Lazy session initialization
 - Efficient message batching
 - Smart update detection in todo manager
+
+### Authentication
+- **Claude CLI**: Uses local Claude CLI authentication instead of API keys
+- **No API Key Required**: Leverages existing `claude auth` credentials
+- **Process Spawning**: Each query spawns a new Claude CLI process
+- **User Context**: Runs with the local user's Claude authentication
+- **Auth Check on Startup**: Verifies CLI authentication before starting
 
 ## Working with This Codebase
 
