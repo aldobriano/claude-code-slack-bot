@@ -13,6 +13,7 @@ export const config = {
     useVertex: process.env.CLAUDE_CODE_USE_VERTEX === '1',
   },
   baseDirectory: process.env.BASE_DIRECTORY || '',
+  persistencePath: process.env.PERSISTENCE_PATH || '',
   debug: process.env.DEBUG === 'true' || process.env.NODE_ENV === 'development',
 };
 
