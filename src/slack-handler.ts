@@ -1,6 +1,5 @@
 import { App } from '@slack/bolt';
-import { ClaudeHandler } from './claude-handler';
-import { SDKMessage } from '@anthropic-ai/claude-code';
+import { ClaudeHandler, SDKMessage } from './claude-handler';
 import { Logger } from './logger';
 import { WorkingDirectoryManager } from './working-directory-manager';
 import { FileHandler, ProcessedFile } from './file-handler';

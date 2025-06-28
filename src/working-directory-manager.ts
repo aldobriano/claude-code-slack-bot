@@ -3,10 +3,33 @@ import { Logger } from './logger';
 import { config } from './config';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
+
+interface PersistenceData {
+  version: string;
+  directories: Record<string, {
+    type: 'channel' | 'dm' | 'thread';
+    channelId: string;
+    threadTs?: string;
+    userId?: string;
+    directory: string;
+    setAt: string;
+    setBy?: string;
+  }>;
+}
 
 export class WorkingDirectoryManager {
   private configs: Map<string, WorkingDirectoryConfig> = new Map();
   private logger = new Logger('WorkingDirectoryManager');
+  private persistencePath: string;
+  private saveTimer: NodeJS.Timeout | null = null;
+  private readonly SAVE_DEBOUNCE_MS = 1000;
+  private readonly PERSISTENCE_VERSION = '1.0';
+
+  constructor() {
+    this.persistencePath = config.persistencePath || path.join(process.cwd(), 'data', 'working-directories.json');
+    this.loadFromDisk();
+  }
 
   getConfigKey(channelId: string, threadTs?: string, userId?: string): string {
     if (threadTs) {
@@ -54,6 +77,7 @@ export class WorkingDirectoryManager {
         isDM: channelId.startsWith('D'),
       });
 
+      this.scheduleSave();
       return { success: true, resolvedPath };
     } catch (error) {
       this.logger.error('Failed to set working directory', error);
@@ -130,6 +154,7 @@ export class WorkingDirectoryManager {
     const result = this.configs.delete(key);
     if (result) {
       this.logger.info('Working directory removed', { key });
+      this.scheduleSave();
     }
     return result;
   }
@@ -207,5 +232,110 @@ export class WorkingDirectoryManager {
     message += `Individual threads can override this by mentioning me with a different \`cwd\` command.`;
     
     return message;
+  }
+
+  private scheduleSave(): void {
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer);
+    }
+    this.saveTimer = setTimeout(() => {
+      this.saveToDisk();
+    }, this.SAVE_DEBOUNCE_MS);
+  }
+
+  private async saveToDisk(): Promise<void> {
+    try {
+      const data: PersistenceData = {
+        version: this.PERSISTENCE_VERSION,
+        directories: {}
+      };
+
+      for (const [key, config] of this.configs.entries()) {
+        let type: 'channel' | 'dm' | 'thread';
+        if (config.threadTs) {
+          type = 'thread';
+        } else if (config.channelId.startsWith('D')) {
+          type = 'dm';
+        } else {
+          type = 'channel';
+        }
+
+        data.directories[key] = {
+          type,
+          channelId: config.channelId,
+          threadTs: config.threadTs,
+          userId: config.userId,
+          directory: config.directory,
+          setAt: config.setAt.toISOString(),
+        };
+      }
+
+      const dir = path.dirname(this.persistencePath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+
+      const tmpFile = `${this.persistencePath}.tmp.${process.pid}.${Date.now()}`;
+      await fs.promises.writeFile(tmpFile, JSON.stringify(data, null, 2), 'utf8');
+      await fs.promises.rename(tmpFile, this.persistencePath);
+      
+      this.logger.debug('Working directories persisted to disk', {
+        path: this.persistencePath,
+        count: this.configs.size
+      });
+    } catch (error) {
+      this.logger.error('Failed to save working directories to disk', error);
+    }
+  }
+
+  private loadFromDisk(): void {
+    try {
+      if (!fs.existsSync(this.persistencePath)) {
+        this.logger.info('No persistence file found, starting fresh', {
+          path: this.persistencePath
+        });
+        return;
+      }
+
+      const content = fs.readFileSync(this.persistencePath, 'utf8');
+      const data: PersistenceData = JSON.parse(content);
+
+      if (data.version !== this.PERSISTENCE_VERSION) {
+        this.logger.warn('Persistence file version mismatch, starting fresh', {
+          expected: this.PERSISTENCE_VERSION,
+          found: data.version
+        });
+        return;
+      }
+
+      this.configs.clear();
+      
+      for (const [key, entry] of Object.entries(data.directories)) {
+        const config: WorkingDirectoryConfig = {
+          channelId: entry.channelId,
+          threadTs: entry.threadTs,
+          userId: entry.userId,
+          directory: entry.directory,
+          setAt: new Date(entry.setAt)
+        };
+
+        if (fs.existsSync(config.directory)) {
+          this.configs.set(key, config);
+        } else {
+          this.logger.warn('Skipping non-existent directory from persistence', {
+            key,
+            directory: config.directory
+          });
+        }
+      }
+
+      this.logger.info('Working directories loaded from disk', {
+        path: this.persistencePath,
+        count: this.configs.size
+      });
+    } catch (error) {
+      this.logger.error('Failed to load working directories from disk', error);
+      this.logger.info('Starting with empty configuration');
+    }
   }
 }
