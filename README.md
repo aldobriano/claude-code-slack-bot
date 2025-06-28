@@ -1,4 +1,4 @@
-# Claude Code Slack Bot
+# Claude Slack Bot
 
 A Slack bot that integrates with Claude Code SDK to provide AI-powered coding assistance directly in your Slack workspace.
 
@@ -142,7 +142,7 @@ With this set, you can use:
 ### Direct Messages
 Simply send a direct message to the bot with your request:
 ```
-@ClaudeBot Can you help me write a Python function to calculate fibonacci numbers?
+@Claude Can you help me write a Python function to calculate fibonacci numbers?
 ```
 
 ### In Channels
@@ -150,14 +150,14 @@ When you first add the bot to a channel, it will ask for a default working direc
 
 Mention the bot in any channel where it's been added:
 ```
-@ClaudeBot Please review this code and suggest improvements
+@Claude Please review this code and suggest improvements
 ```
 
 ### Thread-Specific Working Directories
 You can override the channel's default working directory for a specific thread:
 ```
-@ClaudeBot cwd different-project
-@ClaudeBot Now help me with this specific project
+@Claude cwd different-project
+@Claude Now help me with this specific project
 ```
 
 ### Threads

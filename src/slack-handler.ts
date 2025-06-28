@@ -39,6 +39,8 @@ export class SlackHandler {
   private originalMessages: Map<string, { channel: string; ts: string }> = new Map(); // sessionKey -> original message info
   private currentReactions: Map<string, string> = new Map(); // sessionKey -> current emoji
   private botUserId: string | null = null;
+  private mentionedThreads: Set<string> = new Set(); // Set of channel-threadTs where bot was mentioned
+  private threadTrackingTimers: Map<string, NodeJS.Timeout> = new Map(); // Thread tracking cleanup timers
 
   constructor(app: App, claudeHandler: ClaudeHandler, mcpManager: McpManager) {
     this.app = app;
@@ -172,9 +174,9 @@ export class SlackHandler {
         // In thread but no thread-specific directory
         errorMessage += `You can set a thread-specific working directory using:\n`;
         if (config.baseDirectory) {
-          errorMessage += `\`@claudebot cwd project-name\` or \`@claudebot cwd /absolute/path\``;
+          errorMessage += `\`@claude cwd project-name\` or \`@claude cwd /absolute/path\``;
         } else {
-          errorMessage += `\`@claudebot cwd /path/to/directory\``;
+          errorMessage += `\`@claude cwd /path/to/directory\``;
         }
       } else {
         errorMessage += `Please set one first using:\n\`cwd /path/to/directory\``;
@@ -185,6 +187,15 @@ export class SlackHandler {
         thread_ts: thread_ts || ts,
       });
       return;
+    }
+
+    // Track this thread for future responses
+    // If thread_ts exists, track the thread. If not, track ts as it might become a thread
+    this.trackThread(channel, thread_ts || ts);
+    
+    // Also track using ts if this is the first message in what will become a thread
+    if (!thread_ts) {
+      this.trackThread(channel, ts);
     }
 
     const sessionKey = this.claudeHandler.getSessionKey(user, channel, thread_ts || ts);
@@ -664,6 +675,52 @@ export class SlackHandler {
     return this.botUserId;
   }
 
+  private getThreadKey(channel: string, threadTs: string): string {
+    return `${channel}-${threadTs}`;
+  }
+
+  private trackThread(channel: string, threadTs: string | undefined): void {
+    if (threadTs) {
+      const threadKey = this.getThreadKey(channel, threadTs);
+      this.mentionedThreads.add(threadKey);
+      this.logger.info('Tracking thread for future messages', { 
+        channel, 
+        threadTs,
+        threadKey,
+        totalTrackedThreads: this.mentionedThreads.size
+      });
+      
+      // Clear any existing timer for this thread
+      const existingTimer = this.threadTrackingTimers.get(threadKey);
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+      }
+      
+      // Set a new timer to stop tracking after 24 hours
+      const timer = setTimeout(() => {
+        this.mentionedThreads.delete(threadKey);
+        this.threadTrackingTimers.delete(threadKey);
+        this.logger.info('Stopped tracking thread due to inactivity', { channel, threadTs });
+      }, 24 * 60 * 60 * 1000); // 24 hours
+      
+      this.threadTrackingTimers.set(threadKey, timer);
+    }
+  }
+
+  private isThreadTracked(channel: string, threadTs: string | undefined): boolean {
+    if (!threadTs) return false;
+    const threadKey = this.getThreadKey(channel, threadTs);
+    const isTracked = this.mentionedThreads.has(threadKey);
+    this.logger.debug('Checking if thread is tracked', {
+      channel,
+      threadTs,
+      threadKey,
+      isTracked,
+      allTrackedThreads: Array.from(this.mentionedThreads)
+    });
+    return isTracked;
+  }
+
   private async handleChannelJoin(channelId: string, say: any): Promise<void> {
     try {
       // Get channel info
@@ -673,7 +730,7 @@ export class SlackHandler {
 
       const channelName = (channelInfo.channel as any)?.name || 'this channel';
       
-      let welcomeMessage = `👋 Hi! I'm Claude Code, your AI coding assistant.\n\n`;
+      let welcomeMessage = `👋 Hi! I'm Claude, your AI coding assistant.\n\n`;
       welcomeMessage += `To get started, I need to know the default working directory for #${channelName}.\n\n`;
       
       if (config.baseDirectory) {
@@ -731,12 +788,77 @@ export class SlackHandler {
       } as MessageEvent, say);
     });
 
-    // Handle file uploads in threads
+    // Handle all messages in channels (for tracked threads)
     this.app.event('message', async ({ event, say }) => {
-      // Only handle file uploads that are not from bots and have files
-      if (event.subtype === 'file_share' && 'user' in event && event.files) {
+      // Log all message events for debugging
+      this.logger.debug('Received message event', {
+        type: event.type,
+        subtype: event.subtype,
+        channel: 'channel' in event ? event.channel : undefined,
+        thread_ts: 'thread_ts' in event ? event.thread_ts : undefined,
+        user: 'user' in event ? event.user : undefined,
+        text: 'text' in event ? (event.text as string).substring(0, 50) : undefined,
+      });
+
+      // Skip bot messages
+      if ('bot_id' in event || event.subtype === 'bot_message') {
+        return;
+      }
+
+      // Skip if it's a channel_join or other non-user message
+      if (!('user' in event)) {
+        return;
+      }
+
+      // Skip direct messages (handled by app.message)
+      if ('channel' in event && (event.channel as string).startsWith('D')) {
+        return;
+      }
+
+      const messageEvent = event as MessageEvent;
+      
+      // Handle file uploads
+      if (event.subtype === 'file_share' && event.files) {
         this.logger.info('Handling file upload event');
-        await this.handleMessage(event as MessageEvent, say);
+        await this.handleMessage(messageEvent, say);
+        return;
+      }
+
+      // Skip messages with subtypes other than file_share (already handled above)
+      if (event.subtype && event.subtype !== 'file_share') {
+        this.logger.debug('Skipping message with subtype', {
+          subtype: event.subtype,
+          channel: messageEvent.channel,
+        });
+        return;
+      }
+
+      // Handle regular messages in tracked threads
+      if (messageEvent.thread_ts && this.isThreadTracked(messageEvent.channel, messageEvent.thread_ts)) {
+        // Skip if this is a mention (already handled by app_mention)
+        const botUserId = await this.getBotUserId();
+        if (messageEvent.text && messageEvent.text.includes(`<@${botUserId}>`)) {
+          this.logger.debug('Skipping tracked thread message - contains bot mention', {
+            channel: messageEvent.channel,
+            thread_ts: messageEvent.thread_ts,
+          });
+          return; // Will be handled by app_mention event
+        }
+
+        this.logger.info('Handling message in tracked thread', {
+          channel: messageEvent.channel,
+          thread_ts: messageEvent.thread_ts,
+          user: messageEvent.user,
+          text: messageEvent.text?.substring(0, 50),
+        });
+        
+        await this.handleMessage(messageEvent, say);
+      } else if (messageEvent.thread_ts) {
+        this.logger.debug('Message in non-tracked thread', {
+          channel: messageEvent.channel,
+          thread_ts: messageEvent.thread_ts,
+          isTracked: this.isThreadTracked(messageEvent.channel, messageEvent.thread_ts),
+        });
       }
     });
 
